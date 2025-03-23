@@ -31,15 +31,17 @@ export default class HideCursor extends Extension {
     const checkEvery = 1; // Seconds.
     const disappearAfter = 2000000; // MicroSeconds.
 
-    // Internals.
+    // Retrieve Cursor Tracker.
     try {
-      this._tracker = global.backend.get_cursor_tracker(global.display);
-      this._tick = GLib.get_monotonic_time(); // Reset on every cursor move.
-      this._visible = true; // Lower when hidden to perform less work.
+      this._tracker = global.backend.get_cursor_tracker();
     } catch (e) {
-      console.error("Failed to initialize internals:", e);
+      console.error("Failed to initialize cursor tracker:", e);
       return;
     }
+
+    // Internals.
+    this._tick = GLib.get_monotonic_time(); // MicroSeconds (reset on every cursor move).
+    this._visible = true; // Visibility flag to perform less work.
 
     // Callbacks.
     this._hide = GLib.timeout_add_seconds(
@@ -47,7 +49,7 @@ export default class HideCursor extends Extension {
       checkEvery,
       () => {
         if (this._visible === true) {
-          const elapsed = GLib.get_monotonic_time() - this._tick; // MicroSeconds.
+          const elapsed = GLib.get_monotonic_time() - this._tick;
 
           if (elapsed >= disappearAfter) {
             this._tracker.set_pointer_visible(false);
@@ -59,7 +61,7 @@ export default class HideCursor extends Extension {
       }
     );
 
-    // Listen for cursor movement using "position-invalidated".
+    // Listen for cursor movements.
     this._reset = this._tracker.connect("position-invalidated", () => {
       this._tick = GLib.get_monotonic_time();
 
@@ -70,7 +72,7 @@ export default class HideCursor extends Extension {
   }
 
   disable() {
-    // Disconnect callbacks.
+    // Cleanup.
     if (this._reset) {
       this._tracker.disconnect(this._reset);
       this._reset = null;
