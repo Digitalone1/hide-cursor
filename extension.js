@@ -29,7 +29,7 @@ export default class HideCursor extends Extension {
   enable() {
     // Configuration.
     const checkEvery = 1; // Seconds.
-    const disappearAfter = 2000000; // MicroSeconds.
+    const disappearAfter = 3000000; // MicroSeconds.
 
     // Retrieve Cursor Tracker.
     try {
@@ -43,39 +43,52 @@ export default class HideCursor extends Extension {
     this._tick = GLib.get_monotonic_time(); // MicroSeconds (reset on every cursor move).
     this._visible = true; // Visibility flag to perform less work.
 
-    // Callbacks.
+    // Set GLib timeout callback.
     this._hide = GLib.timeout_add_seconds(
       GLib.PRIORITY_DEFAULT,
       checkEvery,
       () => {
-        if (this._visible === true) {
-          const elapsed = GLib.get_monotonic_time() - this._tick;
-
-          if (elapsed >= disappearAfter) {
-            this._tracker.set_pointer_visible(false);
-            this._visible = false; // Stop calculating as long as it's hidden.
-          }
+        if (
+          this._visible &&
+          GLib.get_monotonic_time() - this._tick >= disappearAfter
+        ) {
+          this._tracker.set_pointer_visible(false);
+          this._visible = false;
         }
-
         return GLib.SOURCE_CONTINUE;
       }
     );
 
-    // Listen for cursor movements.
-    this._reset = this._tracker.connect("position-invalidated", () => {
-      this._tick = GLib.get_monotonic_time();
+    // Callbacks.
+    const updateTick = () => {
+      if (this._tracker?.get_pointer_visible()) {
+        this._tick = GLib.get_monotonic_time();
 
-      if (this._visible === false) {
-        this._visible = true;
+        if (this._visible === false) {
+          this._visible = true;
+        }
       }
-    });
+    };
+
+    // Connect callback to tracker signals.
+    this._resetOnMotion = this._tracker.connect(
+      "position-invalidated",
+      updateTick
+    );
+    this._resetOnVisibility = this._tracker.connect(
+      "visibility-changed",
+      updateTick
+    );
+    this._resetOnNewCursor = this._tracker.connect(
+      "cursor-changed",
+      updateTick
+    );
   }
 
   disable() {
     // Cleanup.
-    if (this._reset) {
-      this._tracker.disconnect(this._reset);
-      this._reset = null;
+    if (this._tracker) {
+      this._tracker.set_pointer_visible(true);
     }
 
     if (this._hide) {
@@ -83,8 +96,19 @@ export default class HideCursor extends Extension {
       this._hide = null;
     }
 
-    if (this._tracker) {
-      this._tracker.set_pointer_visible(true);
+    if (this._resetOnMotion) {
+      this._tracker.disconnect(this._resetOnMotion);
+      this._resetOnMotion = null;
+    }
+
+    if (this._resetOnVisibility) {
+      this._tracker.disconnect(this._resetOnVisibility);
+      this._resetOnVisibility = null;
+    }
+
+    if (this._resetOnNewCursor) {
+      this._tracker.disconnect(this._resetOnNewCursor);
+      this._resetOnNewCursor = null;
     }
   }
 }
