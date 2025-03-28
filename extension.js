@@ -40,8 +40,8 @@ export default class HideCursor extends Extension {
     }
 
     // Internals.
-    this._tick = GLib.get_monotonic_time(); // MicroSeconds (reset on every cursor move).
-    this._visible = true; // Visibility flag to perform less work.
+    this._tick = GLib.get_monotonic_time(); // MicroSecond timestamp to track cursor changes.
+    this._visibleCursor = true; // Visibility flag to perform less work.
 
     // Set GLib timeout callback.
     this._hide = GLib.timeout_add_seconds(
@@ -49,24 +49,29 @@ export default class HideCursor extends Extension {
       checkEvery,
       () => {
         if (
-          this._visible &&
+          this._visibleCursor === true &&
           GLib.get_monotonic_time() - this._tick >= disappearAfter
         ) {
           this._tracker.set_pointer_visible(false);
-          this._visible = false;
+          this._visibleCursor = false;
         }
+
         return GLib.SOURCE_CONTINUE;
       }
     );
 
     // Callbacks.
     const updateTick = () => {
-      if (this._tracker?.get_pointer_visible()) {
-        this._tick = GLib.get_monotonic_time();
+      let visible = false;
 
-        if (this._visible === false) {
-          this._visible = true;
-        }
+      if (this._tracker?.get_pointer_visible() === true) {
+        this._tick = GLib.get_monotonic_time();
+        visible = true;
+      }
+
+      // Update visibility flag if it's changed.
+      if (this._visibleCursor !== visible) {
+        this._visibleCursor = visible;
       }
     };
 
@@ -87,13 +92,8 @@ export default class HideCursor extends Extension {
 
   disable() {
     // Cleanup.
-    if (this._tracker) {
+    if (this._tracker?.get_pointer_visible() === false) {
       this._tracker.set_pointer_visible(true);
-    }
-
-    if (this._hide) {
-      GLib.Source.remove(this._hide);
-      this._hide = null;
     }
 
     if (this._resetOnMotion) {
@@ -109,6 +109,11 @@ export default class HideCursor extends Extension {
     if (this._resetOnNewCursor) {
       this._tracker.disconnect(this._resetOnNewCursor);
       this._resetOnNewCursor = null;
+    }
+
+    if (this._hide) {
+      GLib.Source.remove(this._hide);
+      this._hide = null;
     }
   }
 }
